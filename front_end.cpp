@@ -5,97 +5,41 @@
 int main (int argc, char *argv[])
 {
     // Check input arguments
-    std::string folder;
-    if(argc==1){
-        folder = "../01 Datasets/The EuRoc MAV Dataset/raw/V1_01_easy/mav0";
-    }
-    else if(argc==2){
-        folder = argv[1];
-    }
-    else{
-        std::cout << "Error: wrong number of arguments. "
-                  << "Use: './front_end <path_to_data_folder>' \n";
-        return 0;
-    }
+    std::string dataset = "../01 Datasets/The EuRoc MAV Dataset/raw/";
+    parse_input(argc, argv, dataset);
 
     // Parse data directories
     std::vector<std::vector<std::string>> filenames(2);
-    parse_directory(folder, filenames);
+    parse_directory(dataset, filenames);
 
-    // Load calibration
-    camera cam0, cam1;
-    std::string cam0YAML = folder+"/cam0/sensor.yaml";
-    std::string cam1YAML = folder+"/cam1/sensor.yaml";
-    if(loadYAML<camera>(cam0YAML, cam0) && loadYAML<camera>(cam1YAML, cam1)) {
-        cam0.print();
-        cam1.print();
-    }
+    // Create camera objects / load calibration data
+    std::string cam0YAML = dataset+"/cam0/sensor.yaml";
+    std::string cam1YAML = dataset+"/cam1/sensor.yaml";
+    camera cam0(cam0YAML);
+    camera cam1(cam1YAML);
 
-    // Convert camera object to OpenCV calibration matrices
-    cv::Mat distortion_0, distortion_1,
-            intrinsics_0, intrinsics_1;
-    cv::eigen2cv(cam0.distortion, distortion_0);
-    cv::eigen2cv(cam0.intrinsics, intrinsics_0);
-    cv::eigen2cv(cam1.distortion, distortion_1);
-    cv::eigen2cv(cam1.intrinsics, intrinsics_1);
-    cv::Size resolution;
-    resolution.width = cam0.resolution(0);
-    resolution.height  = cam0.resolution(1);
-    // Compute camera extrinsics (c1_R_c0, c1_t_c0)
-    Eigen::Matrix3d b_R_c0 = cam0.extrinsics.block(0,0,3,3);
-    Eigen::Vector3d b_t_c0 = cam0.extrinsics.block(0,3,3,1);
-    Eigen::Matrix3d b_R_c1 = cam1.extrinsics.block(0,0,3,3);
-    Eigen::Vector3d b_t_c1 = cam1.extrinsics.block(0,3,3,1);
+    // Create stereo camera object
+    camera_stereo cam_stereo(cam0, cam1);
+    cam_stereo.print();
 
-    cv::Mat R, t;
-    Eigen::Matrix3d c1_R_c0 = b_R_c1.transpose() * b_R_c0;
-    Eigen::Vector3d c1_t_c0 = b_R_c1.transpose() * (b_t_c1 - b_t_c0);
-    cv::eigen2cv(c1_R_c0, R);
-    cv::eigen2cv(c1_t_c0, t);
-
-    // Compute stereo rectification transforms
-    cv::Mat R0, R1, P0, P1, Q;
-    cv::stereoRectify(intrinsics_0, distortion_0, intrinsics_1, distortion_0,
-                      resolution, R, t, R0, R1, P0, P1, Q);
-
-    // Rectify stereo image pair
-    cv::Mat map0x, map0y, map1x, map1y;
+    // Stereo rectify test image pair
     cv::Mat img0, img1, imgU0, imgU1;
-
-    img0 = cv::imread(folder + "/cam0/data/1403715274112143104.png"); // Test images, delete
-    img1 = cv::imread(folder + "/cam1/data/1403715274112143104.png"); // Test images, delete
-
-    cv::initUndistortRectifyMap(intrinsics_0, distortion_0, R0, P0, resolution, CV_32FC1, map0x, map0y);
-    cv::initUndistortRectifyMap(intrinsics_1, distortion_1, R1, P1, resolution, CV_32FC1, map1x, map1y);
-
-    cv::remap(img0, imgU0, map0x, map0y, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar());
-    cv::remap(img1, imgU1, map1x, map1y, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar());
-
-    // Draw horizontal epipolar lines
-    cv::Point ptLeft, ptRight;
-    ptLeft.x = 0;
-    ptRight.x = resolution.width;
-    int lines = 20;
-    for(int i=0; i<=lines; i++){
-        ptLeft.y = i * resolution.height/lines;
-        ptRight.y = i * resolution.height/lines;
-        cv::line(imgU0, ptLeft, ptRight, cv::Scalar(0, 255, 0));
-        cv::line(imgU1, ptLeft, ptRight, cv::Scalar(0, 255, 0));
-    }
+    img0 = cv::imread(dataset + "/cam0/data/1403715274112143104.png"); // Test images, delete
+    img1 = cv::imread(dataset + "/cam1/data/1403715274112143104.png"); // Test images, delete
+    stereo_rectify(cam_stereo, img0, img1, imgU0, imgU1);
 
     // Show original and rectified stereo pair with superimposed epipolars
-    cv::Mat img, imgU, img_final;
-    cv::hconcat(img0, img1, img);
-    cv::hconcat(imgU0, imgU1, imgU);
-    cv::vconcat(img, imgU, img_final);
-    cv::imshow("Original and rectified stereo pair", img_final);
-    cv::waitKey(0);
+    imshow_rectified(cam_stereo, img0, img1, imgU0, imgU1);
+
+    // ---------------------------------------------------------------------- //
+    //                          CONTINUAR AQUI AMANHÃ!                        //
+    // ---------------------------------------------------------------------- //
 
     // // Load images, rectify, detect features, extract descriptors, match keypoints
     // cv::Mat img_0, img_1;
     // for(int i=0; i<filenames[0].size(); i++){
-    //     img_0 = cv::imread(folder + "/cam0/data/" + filenames[0][i]);
-    //     img_1 = cv::imread(folder + "/cam0/data/" + filenames[1][i]);
+    //     img_0 = cv::imread(dataset + "/cam0/data/" + filenames[0][i]);
+    //     img_1 = cv::imread(dataset + "/cam0/data/" + filenames[1][i]);
     //     if( !img_0.data || !img_1.data )
     //     { std::cout<< " --(!) Error reading images " << std::endl; return -1; }
     //

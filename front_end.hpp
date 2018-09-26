@@ -23,6 +23,13 @@
 
 /*-------------------------------- CLASSES -----------------------------------*/
 
+typedef struct stereo_extrinsics{
+    // cv::Mat R;
+    // cv::Mat t;
+    Eigen::Matrix3d R;
+    Eigen::Vector3d t;
+} camera_extrinsics;
+
 class camera{
     public:
         int rate;
@@ -30,6 +37,19 @@ class camera{
         Eigen::Vector4d distortion;
         Eigen::Matrix3d intrinsics;
         Eigen::Matrix4d extrinsics;
+        camera();
+        camera(std::string &filename);
+        void print();
+};
+
+class camera_stereo{
+    public:
+        camera cam0;
+        camera cam1;
+        stereo_extrinsics extrinsics;
+        camera_stereo();
+        camera_stereo(camera &s0, camera &s1);
+        void initialize(camera &s0, camera &s1);
         void print();
 };
 

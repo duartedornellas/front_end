@@ -2,18 +2,108 @@
 /*---------------------------- CLASS METHODS ---------------------------------*/
 
 /* Camera */
+
+camera::camera(){}
+camera::camera(std::string &filename){
+    loadYAML<camera>(filename, *this);
+}
+
 void camera::print(){
-    std::cout << '\n'
-              << "Rate: \n" << this->rate << '\n'
+    std::cout << "Rate: \n" << this->rate << '\n'
               << "Resolution: \n" << this->resolution.transpose() << '\n'
               << "Distortion parameters: \n" << this->distortion.transpose() << '\n'
               << "Intrinsics: \n"   << this->intrinsics << '\n'
-              << "Extrinsics: \n" << this->extrinsics << "\n\n";
+              << "Extrinsics (camera to IMU): \n" << this->extrinsics << "\n\n";
+}
+
+/* Stereo camera pair */
+camera_stereo::camera_stereo(){}
+camera_stereo::camera_stereo(camera &s0, camera &s1){
+    this->initialize(s0, s1);
+}
+
+void camera_stereo::print(){
+    std::cout << "Extrinsics (camera to camera): \n"
+    << "t: \n" << this->extrinsics.t.transpose() << '\n'
+    << "R: \n" << this->extrinsics.R << "\n\n";
+    std::cout << "Camera 0: \n";
+    this->cam0.print();
+    std::cout << "Camera 1: \n";
+    this->cam1.print();
+}
+
+void camera_stereo::initialize(camera &s0, camera &s1){
+
+    this->cam0 = s0;
+    this->cam1 = s1;
+
+    Eigen::Matrix3d b_R_c0 = this->cam0.extrinsics.block(0,0,3,3);
+    Eigen::Vector3d b_t_c0 = this->cam0.extrinsics.block(0,3,3,1);
+    Eigen::Matrix3d b_R_c1 = this->cam1.extrinsics.block(0,0,3,3);
+    Eigen::Vector3d b_t_c1 = this->cam1.extrinsics.block(0,3,3,1);
+
+    Eigen::Matrix3d c1_R_c0 = b_R_c1.transpose() * b_R_c0;
+    Eigen::Vector3d c1_t_c0 = b_R_c1.transpose() * (b_t_c1 - b_t_c0);
+
+    // To use with 'extrinsics' struct with 'cv::Mat' elements
+    // cv::Mat R, t;
+    // cv::eigen2cv(c1_R_c0, R);
+    // cv::eigen2cv(c1_t_c0, t);
+    //
+    // this->extrinsics.R = R;
+    // this->extrinsics.t = t;
+
+    // To use with 'extrinsics' struct with 'Eigen::Matrix' elements
+    this->extrinsics.R = c1_R_c0;
+    this->extrinsics.t = c1_t_c0;
 }
 
 /*------------------------------ FUNCTIONS -----------------------------------*/
 
 /* File I/O */
+int parse_input(int argc, char *argv[], std::string &dataset){
+    if(argc==1){
+        dataset += "V1_01_easy";
+    }
+    else if(argc==2){
+        dataset += argv[1];
+    }
+    else{
+        std::cout << "Error: wrong number of arguments. "
+                  << "Use: './front_end <path_to_data_c>' \n";
+        return 0;
+    }
+    dataset += "/mav0";
+    return 1;
+}
+
+int parse_directory(std::string &folder, std::vector<std::vector<std::string>> &filenames){
+    boost::filesystem::path p0(folder + "/cam0/data");
+    boost::filesystem::path p1(folder + "/cam1/data");
+    for (auto i  = boost::filesystem::directory_iterator(p0);
+              i != boost::filesystem::directory_iterator(); i++){
+        if (!boost::filesystem::is_directory(i->path())) //we eliminate directories
+        {filenames[0].push_back(i->path().filename().string());}
+    }
+    std::sort(filenames[0].begin(),filenames[0].end());
+
+    for (auto i  = boost::filesystem::directory_iterator(p1);
+              i != boost::filesystem::directory_iterator(); i++){
+        if (!boost::filesystem::is_directory(i->path())) //we eliminate directories
+        {filenames[1].push_back(i->path().filename().string());}
+    }
+    std::sort(filenames[1].begin(),filenames[1].end());
+
+    // Check parsing went ok / dataset is synchronized
+    if(filenames[0]==filenames[1]){
+        return 1;
+    }
+    else{
+        std::cout << "Error: Unsynchronized image pair.\n";
+        return 0;
+    }
+}
+
 template<> int loadYAML<camera>(std::string &filename, camera &s){
     std::string line;
     std::ifstream filestream (filename.c_str());
@@ -133,29 +223,60 @@ template<> int loadYAML<camera>(std::string &filename, camera &s){
     }
 }
 
-int parse_directory(std::string &folder, std::vector<std::vector<std::string>> &filenames){
-    boost::filesystem::path p0(folder + "/cam0/data");
-    boost::filesystem::path p1(folder + "/cam1/data");
-    for (auto i  = boost::filesystem::directory_iterator(p0);
-              i != boost::filesystem::directory_iterator(); i++){
-        if (!boost::filesystem::is_directory(i->path())) //we eliminate directories
-        {filenames[0].push_back(i->path().filename().string());}
-    }
-    std::sort(filenames[0].begin(),filenames[0].end());
+/* Stereo rectification */
+void stereo_rectify(camera_stereo &cam_stereo,
+                    cv::Mat &img0, cv::Mat &img1,
+                    cv::Mat &imgU0, cv::Mat &imgU1){
+    // Convert camera object to OpenCV calibration matrices
+    cv::Mat intrinsics_0, distortion_0;
+    cv::eigen2cv(cam_stereo.cam0.intrinsics, intrinsics_0);
+    cv::eigen2cv(cam_stereo.cam0.distortion, distortion_0);
 
-    for (auto i  = boost::filesystem::directory_iterator(p1);
-              i != boost::filesystem::directory_iterator(); i++){
-        if (!boost::filesystem::is_directory(i->path())) //we eliminate directories
-        {filenames[1].push_back(i->path().filename().string());}
-    }
-    std::sort(filenames[1].begin(),filenames[1].end());
+    cv::Mat intrinsics_1, distortion_1;
+    cv::eigen2cv(cam_stereo.cam1.intrinsics, intrinsics_1);
+    cv::eigen2cv(cam_stereo.cam1.distortion, distortion_1);
 
-    // Check parsing went ok / dataset is synchronized
-    if(filenames[0]==filenames[1]){
-        return 1;
+    cv::Size resolution(cam_stereo.cam0.resolution(0),
+                        cam_stereo.cam0.resolution(1));
+
+    cv::Mat R, t;
+    cv::eigen2cv(cam_stereo.extrinsics.R, R);
+    cv::eigen2cv(cam_stereo.extrinsics.t, t);
+
+    // Compute stereo rectification transforms
+    cv::Mat R0, R1, P0, P1, Q;
+    cv::stereoRectify(intrinsics_0, distortion_0, intrinsics_1, distortion_0,
+                      resolution, R, t, R0, R1, P0, P1, Q);
+
+    // Rectify stereo image pair
+    cv::Mat map0x, map0y, map1x, map1y;
+    cv::initUndistortRectifyMap(intrinsics_0, distortion_0, R0, P0, resolution, CV_32FC1, map0x, map0y);
+    cv::initUndistortRectifyMap(intrinsics_1, distortion_1, R1, P1, resolution, CV_32FC1, map1x, map1y);
+    cv::remap(img0, imgU0, map0x, map0y, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar());
+    cv::remap(img1, imgU1, map1x, map1y, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar());
+}
+
+/* Misc */
+void imshow_rectified(camera_stereo &cam_stereo,
+                    cv::Mat &img0, cv::Mat &img1,
+                    cv::Mat &imgU0, cv::Mat &imgU1){
+    // Draw horizontal epipolar lines on rectified image pair
+    cv::Point ptLeft, ptRight;
+    ptLeft.x = 0;
+    ptRight.x = cam_stereo.cam0.resolution(0);
+    int lines = 20;
+    for(int i=0; i<=lines; i++){
+        ptLeft.y = i * cam_stereo.cam0.resolution(1)/lines;
+        ptRight.y = ptLeft.y;
+        cv::line(imgU0, ptLeft, ptRight, cv::Scalar(0, 255, 0));
+        cv::line(imgU1, ptLeft, ptRight, cv::Scalar(0, 255, 0));
     }
-    else{
-        std::cout << "Error: Unsynchronized image pair.\n";
-        return 0;
-    }
+
+    // Show original and rectified stereo pair with superimposed epipolars
+    cv::Mat img, imgU, img_final;
+    cv::hconcat(img0, img1, img);
+    cv::hconcat(imgU0, imgU1, imgU);
+    cv::vconcat(img, imgU, img_final);
+    cv::imshow("Original and rectified stereo pair", img_final);
+    cv::waitKey(0);
 }
