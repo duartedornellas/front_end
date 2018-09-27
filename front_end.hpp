@@ -67,14 +67,22 @@ void stereo_rectify(camera_stereo &cam_stereo,
                     cv::Mat &img0, cv::Mat &img1,
                     cv::Mat &imgU0, cv::Mat &imgU1);
 
-void imshow_rectified(camera_stereo &cam_stereo,
-                      cv::Mat &img0, cv::Mat &img1,
-                      cv::Mat &imgU0, cv::Mat &imgU1);
-
 /* Feature matching */
 void epipolar_check(std::vector<cv::DMatch> &matches,
                     std::vector<cv::KeyPoint> &keypoints_0,
                     std::vector<cv::KeyPoint> &keypoints_1);
 
 /* User interface */
-int imshow_quit();
+
+void draw_lines(cv::Mat &img);
+
+void imshow_rectified(camera_stereo &cam_stereo,
+    cv::Mat &img0, cv::Mat &img1,
+    cv::Mat &imgU0, cv::Mat &imgU1);
+
+
+void imshow_matches(cv::Mat &imgU0, std::vector<cv::KeyPoint> &keypoints_0,
+                    cv::Mat &imgU1, std::vector<cv::KeyPoint> &keypoints_1,
+                    std::vector<cv::DMatch> &matches);
+
+int  imshow_quit();

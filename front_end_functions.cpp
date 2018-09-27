@@ -223,6 +223,39 @@ template<> int loadYAML<camera>(std::string &filename, camera &s){
     }
 }
 
+/* Stereo rectification */
+void stereo_rectify(camera_stereo &cam_stereo,
+    cv::Mat &img0, cv::Mat &img1,
+    cv::Mat &imgU0, cv::Mat &imgU1){
+        // Convert camera object to OpenCV calibration matrices
+        cv::Mat intrinsics_0, distortion_0;
+        cv::eigen2cv(cam_stereo.cam0.intrinsics, intrinsics_0);
+        cv::eigen2cv(cam_stereo.cam0.distortion, distortion_0);
+
+        cv::Mat intrinsics_1, distortion_1;
+        cv::eigen2cv(cam_stereo.cam1.intrinsics, intrinsics_1);
+        cv::eigen2cv(cam_stereo.cam1.distortion, distortion_1);
+
+        cv::Size resolution(cam_stereo.cam0.resolution(0),
+        cam_stereo.cam0.resolution(1));
+
+        cv::Mat R, t;
+        cv::eigen2cv(cam_stereo.extrinsics.R, R);
+        cv::eigen2cv(cam_stereo.extrinsics.t, t);
+
+        // Compute stereo rectification transforms
+        cv::Mat R0, R1, P0, P1, Q;
+        cv::stereoRectify(intrinsics_0, distortion_0, intrinsics_1, distortion_1,
+            resolution, R, t, R0, R1, P0, P1, Q);
+
+            // Rectify stereo image pair
+            cv::Mat map0x, map0y, map1x, map1y;
+            cv::initUndistortRectifyMap(intrinsics_0, distortion_0, R0, P0, resolution, CV_32FC1, map0x, map0y);
+            cv::initUndistortRectifyMap(intrinsics_1, distortion_1, R1, P1, resolution, CV_32FC1, map1x, map1y);
+            cv::remap(img0, imgU0, map0x, map0y, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar());
+            cv::remap(img1, imgU1, map1x, map1y, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar());
+        }
+
 /* Feature matching */
 void epipolar_check(std::vector<cv::DMatch> &matches,
                     std::vector<cv::KeyPoint> &keypoints_0,
@@ -231,10 +264,13 @@ void epipolar_check(std::vector<cv::DMatch> &matches,
     for(int i=0; i<matches.size(); i++){
         int index_0 = matches[i].queryIdx;
         int index_1 = matches[i].trainIdx;
+        float x_0 = keypoints_0[index_0].pt.x;
+        float x_1 = keypoints_1[index_1].pt.x;
         float y_0 = keypoints_0[index_0].pt.y;
         float y_1 = keypoints_1[index_1].pt.y;
         int tolerance = 1;
-        if ((y_0-y_1)*(y_0-y_1) > tolerance*tolerance){
+        if ((y_0-y_1)*(y_0-y_1) > tolerance*tolerance ||   // outside epipolars
+             x_0 < x_1){                                   // negative disparity
             delete_list.push_back(i);
         }
     }
@@ -246,65 +282,74 @@ void epipolar_check(std::vector<cv::DMatch> &matches,
     // std::cout << "post-removal matches: " << matches.size() << '\n';
 }
 
-/* Stereo rectification */
-void stereo_rectify(camera_stereo &cam_stereo,
-                    cv::Mat &img0, cv::Mat &img1,
-                    cv::Mat &imgU0, cv::Mat &imgU1){
-    // Convert camera object to OpenCV calibration matrices
-    cv::Mat intrinsics_0, distortion_0;
-    cv::eigen2cv(cam_stereo.cam0.intrinsics, intrinsics_0);
-    cv::eigen2cv(cam_stereo.cam0.distortion, distortion_0);
+/* User interface */
 
-    cv::Mat intrinsics_1, distortion_1;
-    cv::eigen2cv(cam_stereo.cam1.intrinsics, intrinsics_1);
-    cv::eigen2cv(cam_stereo.cam1.distortion, distortion_1);
-
-    cv::Size resolution(cam_stereo.cam0.resolution(0),
-                        cam_stereo.cam0.resolution(1));
-
-    cv::Mat R, t;
-    cv::eigen2cv(cam_stereo.extrinsics.R, R);
-    cv::eigen2cv(cam_stereo.extrinsics.t, t);
-
-    // Compute stereo rectification transforms
-    cv::Mat R0, R1, P0, P1, Q;
-    cv::stereoRectify(intrinsics_0, distortion_0, intrinsics_1, distortion_1,
-                      resolution, R, t, R0, R1, P0, P1, Q);
-
-    // Rectify stereo image pair
-    cv::Mat map0x, map0y, map1x, map1y;
-    cv::initUndistortRectifyMap(intrinsics_0, distortion_0, R0, P0, resolution, CV_32FC1, map0x, map0y);
-    cv::initUndistortRectifyMap(intrinsics_1, distortion_1, R1, P1, resolution, CV_32FC1, map1x, map1y);
-    cv::remap(img0, imgU0, map0x, map0y, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar());
-    cv::remap(img1, imgU1, map1x, map1y, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar());
+void draw_lines(cv::Mat &img){
+    cv::Point ptLeft, ptRight;
+    ptLeft.x = 0;
+    ptRight.x = img.cols;
+    int lines = 20;
+    for(int i=0; i<=lines; i++){
+        ptLeft.y = i * img.rows/lines;
+        ptRight.y = ptLeft.y;
+        cv::line(img, ptLeft, ptRight, cv::Scalar(0, 255, 0));
+    }
 }
 
 void imshow_rectified(camera_stereo &cam_stereo,
-                    cv::Mat &img0, cv::Mat &img1,
-                    cv::Mat &imgU0, cv::Mat &imgU1){
-    // Draw horizontal epipolar lines on rectified image pair
-    cv::Point ptLeft, ptRight;
-    ptLeft.x = 0;
-    ptRight.x = cam_stereo.cam0.resolution(0);
-    int lines = 20;
-    for(int i=0; i<=lines; i++){
-        ptLeft.y = i * cam_stereo.cam0.resolution(1)/lines;
-        ptRight.y = ptLeft.y;
-        cv::line(imgU0, ptLeft, ptRight, cv::Scalar(0, 255, 0));
-        cv::line(imgU1, ptLeft, ptRight, cv::Scalar(0, 255, 0));
+                      cv::Mat &img0, cv::Mat &img1,
+                      cv::Mat &imgU0, cv::Mat &imgU1){
+        // Draw horizontal epipolar lines on rectified image pair
+        cv::Point ptLeft, ptRight;
+        ptLeft.x = 0;
+        ptRight.x = cam_stereo.cam0.resolution(0);
+        int lines = 20;
+        for(int i=0; i<=lines; i++){
+            ptLeft.y = i * cam_stereo.cam0.resolution(1)/lines;
+            ptRight.y = ptLeft.y;
+            cv::line(imgU0, ptLeft, ptRight, cv::Scalar(0, 255, 0));
+            cv::line(imgU1, ptLeft, ptRight, cv::Scalar(0, 255, 0));
+        }
+
+        // Show original and rectified stereo pair with superimposed epipolars
+        cv::Mat img, imgU, img_final;
+        cv::hconcat(img0, img1, img);
+        cv::hconcat(imgU0, imgU1, imgU);
+        cv::vconcat(img, imgU, img_final);
+        cv::imshow("Original and rectified stereo pair", img_final);
+        cv::waitKey(0);
     }
 
-    // Show original and rectified stereo pair with superimposed epipolars
-    cv::Mat img, imgU, img_final;
-    cv::hconcat(img0, img1, img);
-    cv::hconcat(imgU0, imgU1, imgU);
-    cv::vconcat(img, imgU, img_final);
-    cv::imshow("Original and rectified stereo pair", img_final);
-    cv::waitKey(0);
+void imshow_matches(cv::Mat &imgU0, std::vector<cv::KeyPoint> &keypoints_0,
+                   cv::Mat &imgU1, std::vector<cv::KeyPoint> &keypoints_1,
+                   std::vector<cv::DMatch> &matches){
+    cv::Mat imgU01;
+    cv::addWeighted(imgU0, 0.5, imgU1, 0.5, 0.0, imgU01);
+
+    std::vector<cv::Point2f> matches_00, matches_01;
+    for(std::vector<cv::DMatch>::iterator it = matches.begin(); it != matches.end(); ++it) {
+        // Check the correspondence of 'matches_01' and 'keypoints_0[it->queryIdx]
+        //
+        // 'keypoints_0' was input as the query image,
+        // 'keypoints_1' was input as the train image  in:
+        // 'matcher.match(descriptors_0, descriptors_1, matches)';
+        //
+        // 'query' means known beforehand (order is switched since matching...)
+        //
+        matches_00.push_back(keypoints_1[it->trainIdx].pt);
+        matches_01.push_back(keypoints_0[it->queryIdx].pt);
+        cv::rectangle(imgU01, cv::Point(matches_00.back().x-2, matches_00.back().y-2),
+                              cv::Point(matches_00.back().x+2, matches_00.back().y+2),
+                              cv::Scalar(255,0,0), 1, 8, 0);
+        cv::rectangle(imgU01, cv::Point(matches_01.back().x-2, matches_01.back().y-2),
+                              cv::Point(matches_01.back().x+2, matches_01.back().y+2),
+                              cv::Scalar(0,0,255), 1, 8, 0);
+        cv::arrowedLine(imgU01, matches_00.back(), matches_01.back(), cv::Scalar(0,255,0), 1, 8, 0, 0.125);
+    }
+    cv::imshow("Keypoint matches", imgU01);
 }
 
-/* User interface */
-int imshow_quit(){
+int  imshow_quit(){
     int key = cv::waitKey(30);
     if (key == 32){                         // 'spacebar' to pause
         key = -1;
@@ -319,16 +364,4 @@ int imshow_quit(){
         return 1;
     }
     return 0;
-}
-
-void draw_lines(cv::Mat &img){
-    cv::Point ptLeft, ptRight;
-    ptLeft.x = 0;
-    ptRight.x = img.cols;
-    int lines = 20;
-    for(int i=0; i<=lines; i++){
-        ptLeft.y = i * img.rows/lines;
-        ptRight.y = ptLeft.y;
-        cv::line(img, ptLeft, ptRight, cv::Scalar(0, 255, 0));
-    }
 }

@@ -52,13 +52,14 @@ int main (int argc, char *argv[])
         matcher.match(descriptors_0, descriptors_1, matches);
         epipolar_check(matches, keypoints_0, keypoints_1);
 
-        //-- Draw keypoint matches. Uncomment below for horizontal epipolar grid
-        cv::Mat img_keypoints_0, img_keypoints_1, img_matches;
-        cv::drawMatches(imgU0, keypoints_0, imgU1, keypoints_1, matches, img_matches);
-        // draw_lines(img_matches);
-
         //-- Show matched keypoints / get keyboard input for program execution
-        cv::imshow("Isochronous Keypoint Matches", img_matches);
+        //-- [OpenCV function]
+        // cv::Mat img_matches;
+        // cv::drawMatches(imgU0, keypoints_0, imgU1, keypoints_1, matches, img_matches);
+        // draw_lines(img_matches); // Uncomment for horizontal epipolar grid
+        // cv::imshow("Isochronous Keypoint Matches", img_matches);
+        //-- [My function]
+        imshow_matches(imgU0, keypoints_0, imgU1, keypoints_1, matches); // My function
         if (imshow_quit()){
             break;
         }
