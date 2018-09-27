@@ -26,7 +26,7 @@ int main (int argc, char *argv[])
     cv::Mat img0, img1, imgU0, imgU1;
     for(int i=0; i<filenames[0].size(); i++){
         img0 = cv::imread(dataset + "/cam0/data/" + filenames[0][i]);
-        img1 = cv::imread(dataset + "/cam0/data/" + filenames[1][i]);
+        img1 = cv::imread(dataset + "/cam1/data/" + filenames[1][i]);
         if( !img0.data || !img1.data )
         { std::cout<< " --(!) Error reading images " << std::endl; return -1; }
 
@@ -35,6 +35,8 @@ int main (int argc, char *argv[])
 
         //-- Detect keypoints
         cv::Ptr<cv::ORB> detector = cv::ORB::create();
+        detector->setFastThreshold(15);
+        detector->setMaxFeatures(150);
         std::vector<cv::KeyPoint> keypoints_0, keypoints_1;
         detector->detect(imgU0, keypoints_0);
         detector->detect(imgU1, keypoints_1);
@@ -48,28 +50,12 @@ int main (int argc, char *argv[])
         cv::BFMatcher matcher(cv::NORM_HAMMING, true);
         std::vector<cv::DMatch> matches;
         matcher.match(descriptors_0, descriptors_1, matches);
-        //-- Remove outlier matches
-        std::vector<int> delete_list;
-        for(int i=0; i<matches.size(); i++){
-            int index_0 = matches[i].queryIdx;
-            int index_1 = matches[i].trainIdx;
-            float y_0 = keypoints_0[index_0].pt.y;
-            float y_1 = keypoints_1[index_1].pt.y;
-            int tolerance = 10;
-            if ((y_0-y_1)*(y_0-y_1) > tolerance*tolerance){
-                delete_list.push_back(i);
-            }
-        }
-        // std::cout << "pre-removal matches: " << matches.size() << '\n';
-        for(int i=0; i<delete_list.size(); i++){
-            int index = delete_list[i]-i;
-            matches.erase(matches.begin()+index);
-        }
-        // std::cout << "post-removal matches: " << matches.size() << '\n';
+        epipolar_check(matches, keypoints_0, keypoints_1);
 
-        //-- Draw keypoints and matches
+        //-- Draw keypoint matches. Uncomment below for horizontal epipolar grid
         cv::Mat img_keypoints_0, img_keypoints_1, img_matches;
         cv::drawMatches(imgU0, keypoints_0, imgU1, keypoints_1, matches, img_matches);
+        // draw_lines(img_matches);
 
         //-- Show matched keypoints / get keyboard input for program execution
         cv::imshow("Keypoint Matches", img_matches);

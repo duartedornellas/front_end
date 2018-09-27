@@ -223,6 +223,29 @@ template<> int loadYAML<camera>(std::string &filename, camera &s){
     }
 }
 
+/* Feature matching */
+void epipolar_check(std::vector<cv::DMatch> &matches,
+                    std::vector<cv::KeyPoint> &keypoints_0,
+                    std::vector<cv::KeyPoint> &keypoints_1){
+    std::vector<int> delete_list;
+    for(int i=0; i<matches.size(); i++){
+        int index_0 = matches[i].queryIdx;
+        int index_1 = matches[i].trainIdx;
+        float y_0 = keypoints_0[index_0].pt.y;
+        float y_1 = keypoints_1[index_1].pt.y;
+        int tolerance = 1;
+        if ((y_0-y_1)*(y_0-y_1) > tolerance*tolerance){
+            delete_list.push_back(i);
+        }
+    }
+    // std::cout << "pre-removal matches: " << matches.size() << '\n';
+    for(int i=0; i<delete_list.size(); i++){
+        int index = delete_list[i]-i;
+        matches.erase(matches.begin()+index);
+    }
+    // std::cout << "post-removal matches: " << matches.size() << '\n';
+}
+
 /* Stereo rectification */
 void stereo_rectify(camera_stereo &cam_stereo,
                     cv::Mat &img0, cv::Mat &img1,
@@ -245,7 +268,7 @@ void stereo_rectify(camera_stereo &cam_stereo,
 
     // Compute stereo rectification transforms
     cv::Mat R0, R1, P0, P1, Q;
-    cv::stereoRectify(intrinsics_0, distortion_0, intrinsics_1, distortion_0,
+    cv::stereoRectify(intrinsics_0, distortion_0, intrinsics_1, distortion_1,
                       resolution, R, t, R0, R1, P0, P1, Q);
 
     // Rectify stereo image pair
@@ -296,4 +319,16 @@ int imshow_quit(){
         return 1;
     }
     return 0;
+}
+
+void draw_lines(cv::Mat &img){
+    cv::Point ptLeft, ptRight;
+    ptLeft.x = 0;
+    ptRight.x = img.cols;
+    int lines = 20;
+    for(int i=0; i<=lines; i++){
+        ptLeft.y = i * img.rows/lines;
+        ptRight.y = ptLeft.y;
+        cv::line(img, ptLeft, ptRight, cv::Scalar(0, 255, 0));
+    }
 }
