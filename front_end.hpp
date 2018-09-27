@@ -56,7 +56,17 @@ class camera_stereo{
 /*------------------------ FUNCTION PROTOTYPES -------------------------------*/
 
 /* File I/O */
+int parse_input(int argc, char *argv[], std::string &dataset);
 int parse_directory(std::string &folder, std::vector<std::vector<std::string>> &filenames);
 
 template<class sensor> int loadYAML(std::string &filename, sensor &s);
 template<> int loadYAML<camera>(std::string &filename, camera &s);
+
+/* Stereo rectification */
+void stereo_rectify(camera_stereo &cam_stereo,
+                    cv::Mat &img0, cv::Mat &img1,
+                    cv::Mat &imgU0, cv::Mat &imgU1);
+
+void imshow_rectified(camera_stereo &cam_stereo,
+                      cv::Mat &img0, cv::Mat &img1,
+                      cv::Mat &imgU0, cv::Mat &imgU1);

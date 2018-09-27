@@ -1,0 +1,41 @@
+# <num_cameras> = m = 2, stereo case
+# <num_points>  = n
+# <num_observations> = o
+
+# number of lines in file = o + 9*m + 3*n + 1 
+#			  = observations + camera parameters + point coordinates + header
+
+2 n o
+<camera_index_1> <point_index_1> <x_1> <y_1>
+<camera_index_2> <point_index_1> <x_2> <y_2>
+<camera_index_1> <point_index_2> <x_3> <y_3>
+<camera_index_2> <point_index_2> <x_4> <y_4>
+...
+<camera_index_1> <point_index_n> <x_{o-1}> <y_{o-1}>
+<camera_index_2> <point_index_n> <x_o> <y_0>
+wx_1
+wy_1
+wz_1
+tx_1
+ty_1
+tz_1
+k1_1
+k2_1
+wx_1
+wy_1
+wz_1
+tx_1
+ty_1
+tz_1
+k1_1
+k2_1
+P1x
+P1y
+P1z
+P2x
+P2y
+P2z
+...
+Pnx
+Pny
+Pnz

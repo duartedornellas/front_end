@@ -256,7 +256,6 @@ void stereo_rectify(camera_stereo &cam_stereo,
     cv::remap(img1, imgU1, map1x, map1y, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar());
 }
 
-/* Misc */
 void imshow_rectified(camera_stereo &cam_stereo,
                     cv::Mat &img0, cv::Mat &img1,
                     cv::Mat &imgU0, cv::Mat &imgU1){
@@ -279,4 +278,22 @@ void imshow_rectified(camera_stereo &cam_stereo,
     cv::vconcat(img, imgU, img_final);
     cv::imshow("Original and rectified stereo pair", img_final);
     cv::waitKey(0);
+}
+
+/* User interface */
+int imshow_quit(){
+    int key = cv::waitKey(30);
+    if (key == 32){                         // 'spacebar' to pause
+        key = -1;
+        while(key != 32){
+            key = cv::waitKey(0);
+            if (key == 27 || key == 113){   // 'q' or 'ESC' to quit (paused)
+                return 1;
+            }
+        }
+    }
+    if (key == 27 || key == 113){           // 'q' or 'ESC' to quit
+        return 1;
+    }
+    return 0;
 }
