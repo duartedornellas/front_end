@@ -58,7 +58,7 @@ int main (int argc, char *argv[])
         // draw_lines(img_matches);
 
         //-- Show matched keypoints / get keyboard input for program execution
-        cv::imshow("Keypoint Matches", img_matches);
+        cv::imshow("Isochronous Keypoint Matches", img_matches);
         if (imshow_quit()){
             break;
         }
